@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SpendWise — Track smart. Spend better.</title>
-  <meta name="description" content="SpendWise is a beautiful personal finance tracker. Log expenses, set budgets, and gain smart insights into your spending habits.">
+  <meta name="description" content="SpendWise is a beautiful personal finance tracker. Log expenses, set budgets, track savings goals, and gain smart insights into your spending habits.">
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -41,12 +41,21 @@
   <div class="page-wrapper">
     <div class="main-grid">
 
-      <!-- ===== LEFT: SIDEBAR (Add Transaction) ===== -->
+      <!-- ===== LEFT: SIDEBAR (Add / Edit Transaction) ===== -->
       <aside class="sidebar">
-        <div class="card add-expense-card">
-          <p class="card-title">New Transaction</p>
+        <div class="card add-expense-card" id="add-expense-card">
+          <p class="card-title" id="form-card-title">New Transaction</p>
+
+          <!-- Edit mode banner -->
+          <div id="edit-banner" class="edit-banner" style="display:none;">
+            <span>✏️ Editing transaction</span>
+            <button id="cancel-edit-btn" class="cancel-edit-btn">✕ Cancel</button>
+          </div>
 
           <form id="expense-form">
+            <!-- Hidden edit ID -->
+            <input type="hidden" id="edit-id" value="">
+
             <!-- Type Toggle -->
             <div class="form-group toggle-group">
               <span class="toggle-label">Type</span>
@@ -72,19 +81,7 @@
             <div class="form-group">
               <label for="category">Category</label>
               <select id="category" required>
-                <optgroup label="Expense" id="opt-expense">
-                  <option value="Food">🍔 Food</option>
-                  <option value="Travel">🚌 Travel</option>
-                  <option value="Books">📚 Books</option>
-                  <option value="Entertainment">🎮 Entertainment</option>
-                  <option value="Other">🧾 Other</option>
-                </optgroup>
-                <optgroup label="Income" id="opt-income" style="display:none;">
-                  <option value="Salary">💼 Salary</option>
-                  <option value="Allowance">🏠 Allowance</option>
-                  <option value="Bonus">🎁 Bonus</option>
-                  <option value="Other Income">💵 Other Income</option>
-                </optgroup>
+                <!-- Options are populated dynamically by script.js based on selected type -->
               </select>
             </div>
 
@@ -94,8 +91,14 @@
               <input type="text" id="note" placeholder="E.g. Lunch with Sam">
             </div>
 
-            <!-- Recurring -->
+            <!-- Date -->
             <div class="form-group">
+              <label for="txn-date">Date</label>
+              <input type="date" id="txn-date" required>
+            </div>
+
+            <!-- Recurring -->
+            <div class="form-group" id="recurring-group">
               <label for="recurring-select">Recurring?</label>
               <select id="recurring-select">
                 <option value="none">One-time</option>
@@ -118,6 +121,13 @@
           <button class="filter-btn" data-filter="today" id="filter-today">Today</button>
           <button class="filter-btn" data-filter="week" id="filter-week">This Week</button>
           <button class="filter-btn" data-filter="month" id="filter-month">This Month</button>
+        </div>
+
+        <!-- Month Navigator (shown only in "month" mode) -->
+        <div id="month-nav" class="month-nav" style="display:none;">
+          <button id="month-prev" class="month-nav-btn" title="Previous Month">&#8592;</button>
+          <span id="month-nav-label" class="month-nav-label">April 2026</span>
+          <button id="month-next" class="month-nav-btn" title="Next Month">&#8594;</button>
         </div>
 
         <!-- Stat Cards -->
@@ -156,10 +166,38 @@
           </div>
         </div>
 
+        <!-- Savings Goal Card -->
+        <div class="card savings-card" id="savings-card">
+          <div class="savings-header">
+            <p class="card-title" style="margin-bottom:0;">🎯 Savings Goal</p>
+            <button id="toggle-savings-form" class="gear-btn">⚙️ Edit</button>
+          </div>
+
+          <!-- Savings Setup Form -->
+          <div id="savings-form-panel" class="savings-form-panel" style="display:none;">
+            <div class="savings-form-row">
+              <input type="text" id="savings-goal-name" placeholder="Goal name (e.g. Vacation)">
+              <div class="amount-wrapper" style="flex:1;">
+                <span class="amount-prefix">₹</span>
+                <input type="number" id="savings-goal-target" placeholder="Target amount" min="0">
+              </div>
+            </div>
+            <button id="save-savings-goal" class="btn-secondary">Save Goal</button>
+          </div>
+
+          <!-- Savings Progress -->
+          <div id="savings-progress-area">
+            <p id="savings-empty" class="savings-empty">Set a goal to start tracking your savings.</p>
+          </div>
+        </div>
+
         <!-- Insights -->
         <div class="card insights-card" id="insights-card" style="display:none; margin-bottom:1.25rem;">
-          <p class="card-title">💡 Smart Insights</p>
-          <p id="insight-text">Analyzing your spending…</p>
+          <div class="insights-header">
+            <p class="card-title" style="margin-bottom:0;">💡 Smart Insights</p>
+            <div class="insights-dots" id="insights-dots"></div>
+          </div>
+          <p id="insight-text" style="margin-top:.75rem;">Analyzing your spending…</p>
         </div>
 
         <!-- Charts Row -->
@@ -203,7 +241,13 @@
       <section class="card history-section">
         <div class="history-header">
           <p class="card-title">Transaction History</p>
-          <button id="export-btn" class="export-btn">📄 Export CSV</button>
+          <div class="history-controls">
+            <div class="search-wrapper">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="search-input" class="search-input" placeholder="Search transactions…">
+            </div>
+            <button id="export-btn" class="export-btn">📄 Export CSV</button>
+          </div>
         </div>
         <div id="expense-list-container">
           <p class="empty-state">
