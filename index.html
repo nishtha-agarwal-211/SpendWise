@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpendWise — Track smart. Spend better.</title>
+  <meta name="description" content="SpendWise is a beautiful personal finance tracker. Log expenses, set budgets, and gain smart insights into your spending habits.">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="header">
+    <div class="header-top">
+      <div class="logo-group">
+        <div class="logo-icon">💰</div>
+        <h1 class="logo">SpendWise</h1>
+      </div>
+
+      <div class="header-right">
+        <div class="streak-badge" id="streak-badge">
+          🏆 <span id="streak-count">0</span>
+        </div>
+        <button id="theme-toggle" class="theme-btn" title="Toggle Theme">🌙</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== PAGE WRAPPER ===== -->
+  <div class="page-wrapper">
+    <div class="main-grid">
+
+      <!-- ===== LEFT: SIDEBAR (Add Transaction) ===== -->
+      <aside class="sidebar">
+        <div class="card add-expense-card">
+          <p class="card-title">New Transaction</p>
+
+          <form id="expense-form">
+            <!-- Type Toggle -->
+            <div class="form-group toggle-group">
+              <span class="toggle-label">Type</span>
+              <div class="toggle-container">
+                <input type="radio" name="type" id="type-expense" value="expense" checked>
+                <label for="type-expense" class="toggle-btn expense-btn">💸 Expense</label>
+
+                <input type="radio" name="type" id="type-income" value="income">
+                <label for="type-income" class="toggle-btn income-btn">💰 Income</label>
+              </div>
+            </div>
+
+            <!-- Amount -->
+            <div class="form-group">
+              <label for="amount">Amount</label>
+              <div class="amount-wrapper">
+                <span class="amount-prefix">₹</span>
+                <input type="number" id="amount" placeholder="0.00" required min="1" step="any">
+              </div>
+            </div>
+
+            <!-- Category -->
+            <div class="form-group">
+              <label for="category">Category</label>
+              <select id="category" required>
+                <optgroup label="Expense" id="opt-expense">
+                  <option value="Food">🍔 Food</option>
+                  <option value="Travel">🚌 Travel</option>
+                  <option value="Books">📚 Books</option>
+                  <option value="Entertainment">🎮 Entertainment</option>
+                  <option value="Other">🧾 Other</option>
+                </optgroup>
+                <optgroup label="Income" id="opt-income" style="display:none;">
+                  <option value="Salary">💼 Salary</option>
+                  <option value="Allowance">🏠 Allowance</option>
+                  <option value="Bonus">🎁 Bonus</option>
+                  <option value="Other Income">💵 Other Income</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <!-- Note -->
+            <div class="form-group">
+              <label for="note">Note <span style="text-transform:none;font-weight:400;color:var(--text-muted)">(optional)</span></label>
+              <input type="text" id="note" placeholder="E.g. Lunch with Sam">
+            </div>
+
+            <!-- Recurring -->
+            <div class="form-group">
+              <label for="recurring-select">Recurring?</label>
+              <select id="recurring-select">
+                <option value="none">One-time</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+
+            <button type="submit" class="btn-primary expense-mode" id="submit-btn">Add Transaction</button>
+          </form>
+        </div>
+      </aside>
+
+      <!-- ===== RIGHT: Main Content ===== -->
+      <main class="content-area">
+
+        <!-- Filter Bar -->
+        <div class="filter-container">
+          <button class="filter-btn active" data-filter="all" id="filter-all">All Time</button>
+          <button class="filter-btn" data-filter="today" id="filter-today">Today</button>
+          <button class="filter-btn" data-filter="week" id="filter-week">This Week</button>
+          <button class="filter-btn" data-filter="month" id="filter-month">This Month</button>
+        </div>
+
+        <!-- Stat Cards -->
+        <div class="balance-grid">
+          <div class="card stat-card balance-card">
+            <div class="stat-label">Balance</div>
+            <div class="stat-value" id="total-balance">₹0</div>
+          </div>
+          <div class="card stat-card income-card">
+            <div class="stat-label">Income</div>
+            <div class="stat-value" id="total-income">₹0</div>
+          </div>
+          <div class="card stat-card expense-card">
+            <div class="stat-label">Expenses</div>
+            <div class="stat-value" id="total-expense">₹0</div>
+          </div>
+        </div>
+
+        <!-- Monthly Budget -->
+        <div class="card budget-card">
+          <div class="budget-header">
+            <p class="card-title" style="margin-bottom:0;">Monthly Budget</p>
+            <div class="budget-input-wrapper">
+              <span>₹</span>
+              <input type="number" id="monthly-budget" placeholder="Set limit" min="0">
+            </div>
+          </div>
+          <div class="budget-status">
+            <div class="progress-track">
+              <div id="budget-progress-fill" class="progress-fill"></div>
+            </div>
+            <div class="budget-meta">
+              <p id="budget-text" class="budget-text">No budget set</p>
+              <p id="budget-warning" class="budget-warning">🚨 Over Budget!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insights -->
+        <div class="card insights-card" id="insights-card" style="display:none; margin-bottom:1.25rem;">
+          <p class="card-title">💡 Smart Insights</p>
+          <p id="insight-text">Analyzing your spending…</p>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="charts-row">
+          <div class="card chart-card">
+            <p class="card-title">Distribution</p>
+            <div class="chart-wrapper">
+              <canvas id="expense-chart"></canvas>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <p class="card-title">Spending Trend</p>
+            <div class="chart-wrapper">
+              <canvas id="trend-chart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spending Breakdown -->
+        <div class="card breakdown-card">
+          <div class="breakdown-head">
+            <p class="card-title">Spending Breakdown</p>
+            <button id="toggle-cat-limits" class="gear-btn">⚙️ Limits</button>
+          </div>
+
+          <!-- Category Limits Panel -->
+          <div id="cat-limits-form" class="cat-limits-panel">
+            <p>Set monthly spending limits per category:</p>
+            <div id="cat-limits-inputs"></div>
+            <button id="save-cat-limits" class="btn-secondary">Save Limits</button>
+          </div>
+
+          <div id="category-progress-container">
+            <!-- Progress bars injected by JS -->
+          </div>
+        </div>
+
+      </main>
+
+      <!-- ===== HISTORY — Full Width ===== -->
+      <section class="card history-section">
+        <div class="history-header">
+          <p class="card-title">Transaction History</p>
+          <button id="export-btn" class="export-btn">📄 Export CSV</button>
+        </div>
+        <div id="expense-list-container">
+          <p class="empty-state">
+            <span class="empty-icon">🚀</span>
+            No transactions yet — add your first one!
+          </p>
+        </div>
+      </section>
+
+    </div><!-- /.main-grid -->
+  </div><!-- /.page-wrapper -->
+
+  <!-- Undo Toast -->
+  <div id="toast" class="toast hidden">
+    <span>Transaction deleted.</span>
+    <button id="undo-btn">UNDO</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
