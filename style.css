@@ -201,7 +201,7 @@ body::after {
     align-items: start;
   }
   .sidebar { position: sticky; top: 80px; }
-  .history-section { grid-column: 1 / -1; }
+  .history-section { grid-column: 2; }
 }
 
 /* =============================================
