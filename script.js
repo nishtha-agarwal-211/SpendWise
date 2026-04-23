@@ -77,7 +77,42 @@ document.addEventListener('DOMContentLoaded', () => {
     const savingsProgressArea = document.getElementById('savings-progress-area');
     const savingsEmpty        = document.getElementById('savings-empty');
 
-    // --- Category Metadata (must be defined before any init call that uses it) ---
+    // Currency
+    const currencySelector = document.getElementById('currency-selector');
+    const currencyBtn      = document.getElementById('currency-btn');
+    const currencyDropdown = document.getElementById('currency-dropdown');
+    const currencySymbolDisplay = document.getElementById('currency-symbol-display');
+    const amountPrefixEl   = document.getElementById('amount-prefix');
+    const budgetCurrSym    = document.getElementById('budget-currency-symbol');
+    const savingsCurrSym   = document.getElementById('savings-currency-symbol');
+
+    // Tags
+    const tagsInput        = document.getElementById('tags-input');
+    const tagCloudCard     = document.getElementById('tag-cloud-card');
+    const tagCloudEl       = document.getElementById('tag-cloud');
+
+    // Dashboard
+    const dashAvgDaily     = document.getElementById('dash-avg-daily');
+    const dashBiggest      = document.getElementById('dash-biggest');
+    const dashActiveDay    = document.getElementById('dash-active-day');
+    const dashSavingsRate  = document.getElementById('dash-savings-rate');
+
+    // Year review
+    const yearReviewCard   = document.getElementById('year-review-card');
+    const yearReviewToggle = document.getElementById('year-review-toggle');
+    const yearReviewBody   = document.getElementById('year-review-body');
+    const yearReviewStats  = document.getElementById('year-review-stats');
+    const yearReviewChart  = document.getElementById('year-review-chart');
+    const yearCollapseBtn  = document.getElementById('year-review-collapse-btn');
+
+    // Import
+    const importCsvInput   = document.getElementById('import-csv-input');
+
+    // Achievements
+    const achievementsList = document.getElementById('achievements-list');
+    const achievementsCount= document.getElementById('achievements-count');
+
+    // --- Category Metadata ---
     const CATEGORY_META = {
         'Food':          { emoji: '🍔', color: '#f97066', bg: 'rgba(249,112,102,0.15)' },
         'Travel':        { emoji: '🚌', color: '#34d399', bg: 'rgba(52,211,153,0.15)'  },
@@ -104,25 +139,53 @@ document.addEventListener('DOMContentLoaded', () => {
     let lastDeleted     = null;
     let chartInstance   = null;
     let trendInstance   = null;
+    let yearChartInst   = null;
     let toastTimer      = null;
     let searchQuery     = '';
     let insightIndex    = 0;
     let insightData     = [];
+    let activeCurrency  = localStorage.getItem('spendwise_currency') || 'INR';
+    let activeTag       = '';
+    let unlockedAchievements = JSON.parse(localStorage.getItem('spendwise_achievements')) || [];
 
     // Month navigator state (0-indexed month)
     const nowRef = new Date();
     let navMonth = nowRef.getMonth();
     let navYear  = nowRef.getFullYear();
 
+    // --- Currency config ---
+    const CURRENCIES = {
+        INR: { symbol: '₹', code: 'INR', locale: 'en-IN' },
+        USD: { symbol: '$', code: 'USD', locale: 'en-US' },
+        EUR: { symbol: '€', code: 'EUR', locale: 'de-DE' },
+        GBP: { symbol: '£', code: 'GBP', locale: 'en-GB' }
+    };
+
+    // --- Achievement definitions ---
+    const ACHIEVEMENT_DEFS = [
+        { id: 'first_txn', emoji: '🌟', name: 'First Step', desc: 'Log your first transaction', check: () => expenses.length >= 1 },
+        { id: 'ten_txns', emoji: '📝', name: 'Getting Started', desc: 'Log 10 transactions', check: () => expenses.length >= 10 },
+        { id: 'fifty_txns', emoji: '🔥', name: 'On Fire', desc: 'Log 50 transactions', check: () => expenses.length >= 50 },
+        { id: 'century', emoji: '💯', name: 'Century Club', desc: 'Log 100 transactions', check: () => expenses.length >= 100 },
+        { id: 'budget_set', emoji: '📋', name: 'Planner', desc: 'Set a monthly budget', check: () => monthlyBudget > 0 },
+        { id: 'under_budget', emoji: '🏆', name: 'Budget Master', desc: 'Stay under budget this month', check: () => { if(monthlyBudget<=0) return false; const n=new Date(); const mt=expenses.filter(e=>{const d=new Date(e.date);return e.type!=='income'&&d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear();}).reduce((s,e)=>s+parseFloat(e.amount),0); return mt < monthlyBudget; }},
+        { id: 'savings_goal', emoji: '🎯', name: 'Goal Setter', desc: 'Set a savings goal', check: () => savingsGoal && savingsGoal.target > 0 },
+        { id: 'streak_3', emoji: '⚡', name: 'Consistent', desc: '3-day logging streak', check: () => { const dates=new Set(expenses.map(e=>e.date.split('T')[0])); let s=0,d=new Date(); while(true){const ds=d.toISOString().split('T')[0]; if(dates.has(ds)){s++;d.setDate(d.getDate()-1);}else{if(ds===new Date().toISOString().split('T')[0]){d.setDate(d.getDate()-1);continue;}break;}} return s>=3; }},
+        { id: 'big_saver', emoji: '💎', name: 'Big Saver', desc: 'Savings rate above 30%', check: () => { const inc=expenses.filter(e=>e.type==='income').reduce((s,e)=>s+parseFloat(e.amount),0); const exp=expenses.filter(e=>e.type!=='income').reduce((s,e)=>s+parseFloat(e.amount),0); return inc>0 && ((inc-exp)/inc)*100>=30; }},
+        { id: 'tagger', emoji: '🏷️', name: 'Organizer', desc: 'Use tags on 5 transactions', check: () => expenses.filter(e=>e.tags&&e.tags.length>0).length >= 5 },
+    ];
+
     // --- Init ---
     try {
+        initCurrency();
         initTheme();
         setDefaultDate();
-        populateCategoryOptions('expense'); // seed the select on load
+        populateCategoryOptions('expense');
         if (monthlyBudget > 0 && budgetInput) budgetInput.value = monthlyBudget;
         checkRecurring();
         renderStreak();
         renderSavingsGoal();
+        renderAchievements();
         updateUI();
     } catch(initErr) {
         console.error('SpendWise init error:', initErr);
@@ -139,10 +202,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function formatCurrency(amount) {
-        return new Intl.NumberFormat('en-IN', {
-            style: 'currency', currency: 'INR',
+        const c = CURRENCIES[activeCurrency] || CURRENCIES.INR;
+        return new Intl.NumberFormat(c.locale, {
+            style: 'currency', currency: c.code,
             minimumFractionDigits: 0, maximumFractionDigits: 0
         }).format(amount);
+    }
+
+    function getCurrSymbol() {
+        return (CURRENCIES[activeCurrency] || CURRENCIES.INR).symbol;
     }
 
     function setDefaultDate() {
@@ -669,6 +737,7 @@ document.addEventListener('DOMContentLoaded', () => {
         amountInput.value = item.amount;
         noteInput.value   = item.note || '';
         txnDateInput.value = item.date.split('T')[0];
+        if (tagsInput) tagsInput.value = (item.tags || []).join(', ');
 
         const type = item.type || 'expense';
         document.querySelector(`input[name="type"][value="${type}"]`).checked = true;
@@ -761,11 +830,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const iconBg   = type === 'income' ? getCategoryBg(appExpense.category) : getCategoryBg(appExpense.category);
                 const sign     = type === 'income' ? '+' : '−';
 
+                const tagsHtml = (appExpense.tags && appExpense.tags.length)
+                    ? `<div class="txn-tags">${appExpense.tags.map(t => `<span class="txn-tag">#${t}</span>`).join('')}</div>` : '';
+
                 item.innerHTML = `
                     <div class="txn-icon" style="background:${iconBg};">${emoji}</div>
                     <div class="expense-info">
                         <span class="expense-category">${appExpense.category}</span>
                         <span class="expense-date-note">${appExpense.note ? appExpense.note : '&mdash;'}</span>
+                        ${tagsHtml}
                     </div>
                     <div class="expense-actions">
                         <span class="expense-amount">${sign}${formatCurrency(appExpense.amount)}</span>
@@ -801,12 +874,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const note      = noteInput.value.trim();
         const type      = document.querySelector('input[name="type"]:checked').value;
         const recurring = recurringSelect.value;
-        const dateVal   = txnDateInput.value; // YYYY-MM-DD
+        const dateVal   = txnDateInput.value;
+        const tags      = tagsInput.value.trim() ? tagsInput.value.split(',').map(t => t.trim().toLowerCase()).filter(Boolean) : [];
 
         if (!amount || amount <= 0) { showNotice('Enter a valid amount 👆'); return; }
         if (!dateVal) { showNotice('Pick a date 📅'); return; }
 
-        // Button animation
         submitBtn.style.transform = 'scale(0.96)';
         setTimeout(() => submitBtn.style.transform = '', 200);
 
@@ -816,7 +889,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (idx !== -1) {
                 expenses[idx] = {
                     ...expenses[idx],
-                    amount, category, note, type,
+                    amount, category, note, type, tags,
                     date: new Date(dateVal + 'T12:00:00').toISOString()
                 };
                 saveExpenses();
@@ -824,15 +897,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 resetFormToAddMode();
                 renderStreak();
                 renderSavingsGoal();
+                renderAchievements();
                 updateUI();
             }
             return;
         }
 
-        // ---- ADD MODE ----
         const newExpense = {
             id:       Date.now().toString(),
-            amount, category, note, type,
+            amount, category, note, type, tags,
             date: new Date(dateVal + 'T12:00:00').toISOString()
         };
 
@@ -854,13 +927,13 @@ document.addEventListener('DOMContentLoaded', () => {
         saveExpenses();
         renderStreak();
         renderSavingsGoal();
+        renderAchievements();
         updateUI();
 
         expenseForm.reset();
         setDefaultDate();
         document.getElementById('type-expense').checked = true;
-        optExpense.style.display = 'block';
-        optIncome.style.display  = 'none';
+        populateCategoryOptions('expense');
         submitBtn.textContent    = 'Add Transaction';
         submitBtn.classList.add('expense-mode');
     }
@@ -873,6 +946,7 @@ document.addEventListener('DOMContentLoaded', () => {
         expenses    = expenses.filter(e => e.id !== id);
         saveExpenses();
         renderSavingsGoal();
+        renderAchievements();
         updateUI();
         showToast('Transaction deleted.');
     }
@@ -1034,17 +1108,248 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    /* ======= CURRENCY ======= */
+    function initCurrency() {
+        const sym = getCurrSymbol();
+        if (currencySymbolDisplay) currencySymbolDisplay.textContent = sym;
+        if (amountPrefixEl) amountPrefixEl.textContent = sym;
+        if (budgetCurrSym) budgetCurrSym.textContent = sym;
+        if (savingsCurrSym) savingsCurrSym.textContent = sym;
+        // Mark active option
+        document.querySelectorAll('.currency-option').forEach(o => {
+            o.classList.toggle('active', o.dataset.currency === activeCurrency);
+        });
+    }
+
+    currencyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        currencySelector.classList.toggle('open');
+    });
+    document.addEventListener('click', () => currencySelector.classList.remove('open'));
+
+    document.querySelectorAll('.currency-option').forEach(opt => {
+        opt.addEventListener('click', () => {
+            activeCurrency = opt.dataset.currency;
+            localStorage.setItem('spendwise_currency', activeCurrency);
+            initCurrency();
+            currencySelector.classList.remove('open');
+            renderSavingsGoal();
+            updateUI();
+        });
+    });
+
+    /* ======= TAGS ======= */
+    function getAllTags() {
+        const tagMap = {};
+        expenses.forEach(e => {
+            if (e.tags && e.tags.length) {
+                e.tags.forEach(t => { tagMap[t] = (tagMap[t] || 0) + 1; });
+            }
+        });
+        return tagMap;
+    }
+
+    function renderTagCloud() {
+        const tagMap = getAllTags();
+        const keys = Object.keys(tagMap);
+        if (!keys.length) { tagCloudCard.style.display = 'none'; return; }
+        tagCloudCard.style.display = 'block';
+        tagCloudEl.innerHTML = '';
+        // Add "All" chip
+        const allChip = document.createElement('span');
+        allChip.className = 'tag-chip' + (!activeTag ? ' active' : '');
+        allChip.textContent = 'All';
+        allChip.addEventListener('click', () => { activeTag = ''; updateUI(); });
+        tagCloudEl.appendChild(allChip);
+        keys.sort((a,b) => tagMap[b] - tagMap[a]).forEach(tag => {
+            const chip = document.createElement('span');
+            chip.className = 'tag-chip' + (activeTag === tag ? ' active' : '');
+            chip.innerHTML = `${tag} <span class="tag-count">${tagMap[tag]}</span>`;
+            chip.addEventListener('click', () => { activeTag = (activeTag === tag) ? '' : tag; updateUI(); });
+            tagCloudEl.appendChild(chip);
+        });
+    }
+
+    function applyTagFilter(list) {
+        if (!activeTag) return list;
+        return list.filter(e => e.tags && e.tags.includes(activeTag));
+    }
+
+    /* ======= FINANCIAL DASHBOARD ======= */
+    function renderDashboard(visible) {
+        const expItems = visible.filter(e => e.type !== 'income');
+        const incItems = visible.filter(e => e.type === 'income');
+        const totalExp = expItems.reduce((s, e) => s + parseFloat(e.amount), 0);
+        const totalInc = incItems.reduce((s, e) => s + parseFloat(e.amount), 0);
+
+        // Avg daily spend
+        if (expItems.length) {
+            const dates = new Set(expItems.map(e => e.date.split('T')[0]));
+            dashAvgDaily.textContent = formatCurrency(Math.round(totalExp / Math.max(dates.size, 1)));
+        } else {
+            dashAvgDaily.textContent = formatCurrency(0);
+        }
+
+        // Biggest transaction
+        if (visible.length) {
+            const biggest = visible.reduce((a, b) => parseFloat(b.amount) > parseFloat(a.amount) ? b : a);
+            dashBiggest.textContent = formatCurrency(biggest.amount);
+        } else {
+            dashBiggest.textContent = formatCurrency(0);
+        }
+
+        // Most active day
+        const dayCount = {};
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        visible.forEach(e => {
+            const day = dayNames[new Date(e.date).getDay()];
+            dayCount[day] = (dayCount[day] || 0) + 1;
+        });
+        const topDay = Object.entries(dayCount).sort((a, b) => b[1] - a[1])[0];
+        dashActiveDay.textContent = topDay ? topDay[0] : '—';
+
+        // Savings rate
+        if (totalInc > 0) {
+            const rate = Math.round(((totalInc - totalExp) / totalInc) * 100);
+            dashSavingsRate.textContent = `${Math.max(rate, 0)}%`;
+            dashSavingsRate.style.color = rate >= 30 ? 'var(--green)' : rate >= 0 ? 'var(--yellow)' : 'var(--red)';
+        } else {
+            dashSavingsRate.textContent = '0%';
+        }
+    }
+
+    /* ======= YEAR-IN-REVIEW ======= */
+    yearReviewToggle.addEventListener('click', () => {
+        const open = yearReviewBody.style.display === 'block';
+        yearReviewBody.style.display = open ? 'none' : 'block';
+        yearCollapseBtn.textContent = open ? '▾ Expand' : '▴ Collapse';
+        if (!open) renderYearReview();
+    });
+
+    function renderYearReview() {
+        const year = new Date().getFullYear();
+        const yearExpenses = expenses.filter(e => new Date(e.date).getFullYear() === year);
+        const monthlyData = Array(12).fill(null).map(() => ({ income: 0, expense: 0 }));
+        yearExpenses.forEach(e => {
+            const m = new Date(e.date).getMonth();
+            const amt = parseFloat(e.amount);
+            if (e.type === 'income') monthlyData[m].income += amt;
+            else monthlyData[m].expense += amt;
+        });
+
+        const totalYearExp = monthlyData.reduce((s, m) => s + m.expense, 0);
+        const totalYearInc = monthlyData.reduce((s, m) => s + m.income, 0);
+        const monthsWithData = monthlyData.filter(m => m.expense > 0 || m.income > 0);
+        const avgMonthly = monthsWithData.length ? Math.round(totalYearExp / monthsWithData.length) : 0;
+
+        yearReviewStats.innerHTML = `
+            <div class="yr-stat"><span class="yr-stat-label">Year Spend</span><span class="yr-stat-value" style="color:var(--red)">${formatCurrency(totalYearExp)}</span></div>
+            <div class="yr-stat"><span class="yr-stat-label">Year Income</span><span class="yr-stat-value" style="color:var(--green)">${formatCurrency(totalYearInc)}</span></div>
+            <div class="yr-stat"><span class="yr-stat-label">Avg/Month</span><span class="yr-stat-value" style="color:var(--blue)">${formatCurrency(avgMonthly)}</span></div>
+        `;
+
+        // Chart
+        const isDark = theme !== 'minimal';
+        const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        if (yearChartInst) yearChartInst.destroy();
+        yearChartInst = new Chart(yearReviewChart, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Income', data: monthlyData.map(m => m.income), backgroundColor: 'rgba(34,211,165,0.7)', borderRadius: 4, barPercentage: 0.6 },
+                    { label: 'Expenses', data: monthlyData.map(m => m.expense), backgroundColor: 'rgba(249,112,102,0.7)', borderRadius: 4, barPercentage: 0.6 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: isDark ? '#94a3b8' : '#475569', font: { size: 10 } } } },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }, ticks: { color: isDark ? '#64748b' : '#94a3b8', font: { size: 9 }, callback: v => getCurrSymbol() + v } },
+                    x: { grid: { display: false }, ticks: { color: isDark ? '#64748b' : '#94a3b8', font: { size: 9 } } }
+                }
+            }
+        });
+    }
+
+    /* ======= CSV IMPORT ======= */
+    importCsvInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const lines = ev.target.result.split('\n').filter(l => l.trim());
+            if (lines.length < 2) { showNotice('CSV file is empty or invalid.'); return; }
+            let imported = 0;
+            const validCats = new Set([...EXPENSE_CATEGORIES.map(c=>c.value), ...INCOME_CATEGORIES.map(c=>c.value)]);
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(',').map(c => c.trim());
+                if (cols.length < 4) continue;
+                const [date, type, category, amount, ...rest] = cols;
+                const note = rest.join(',').replace(/^"|"$/g, '');
+                const amt = parseFloat(amount);
+                if (!date || isNaN(amt) || amt <= 0) continue;
+                const txnType = (type || '').toLowerCase() === 'income' ? 'income' : 'expense';
+                const txnCat = validCats.has(category) ? category : (txnType === 'income' ? 'Other Income' : 'Other');
+                expenses.unshift({
+                    id: Date.now().toString() + Math.random().toString().slice(2, 6),
+                    amount: amt, category: txnCat, note: note || '',
+                    type: txnType, date: new Date(date + 'T12:00:00').toISOString(), tags: []
+                });
+                imported++;
+            }
+            if (imported > 0) {
+                saveExpenses();
+                renderStreak();
+                renderSavingsGoal();
+                renderAchievements();
+                updateUI();
+                showNotice(`Imported ${imported} transaction${imported > 1 ? 's' : ''}! 📥`);
+            } else {
+                showNotice('No valid transactions found in CSV.');
+            }
+            importCsvInput.value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    /* ======= ACHIEVEMENTS ======= */
+    function renderAchievements() {
+        achievementsList.innerHTML = '';
+        let unlocked = 0;
+        ACHIEVEMENT_DEFS.forEach(def => {
+            const isUnlocked = def.check();
+            if (isUnlocked && !unlockedAchievements.includes(def.id)) {
+                unlockedAchievements.push(def.id);
+                localStorage.setItem('spendwise_achievements', JSON.stringify(unlockedAchievements));
+            }
+            const wasUnlocked = unlockedAchievements.includes(def.id);
+            if (wasUnlocked) unlocked++;
+            const badge = document.createElement('div');
+            badge.className = `achievement-badge ${wasUnlocked ? 'unlocked' : 'locked'}`;
+            badge.innerHTML = `
+                <span class="achievement-emoji">${def.emoji}</span>
+                <span class="achievement-name">${def.name}</span>
+                <span class="achievement-desc">${def.desc}</span>
+            `;
+            achievementsList.appendChild(badge);
+        });
+        achievementsCount.textContent = `${unlocked} / ${ACHIEVEMENT_DEFS.length}`;
+    }
+
     /* ======= UPDATE UI (master render) ======= */
     function updateUI() {
         const filtered = getFilteredExpenses();
-        renderExpenses(filtered);
-        renderStats(filtered);
-        renderCharts(filtered);
-        renderInsights(filtered);
+        const tagged = applyTagFilter(filtered);
+        renderExpenses(tagged);
+        renderStats(tagged);
+        renderCharts(tagged);
+        renderInsights(tagged);
+        renderDashboard(tagged);
+        renderTagCloud();
     }
 
     /* ======= INIT LISTENERS ======= */
     expenseForm.addEventListener('submit', addExpense);
-    optExpense.style.display = 'block';
-    optIncome.style.display  = 'none';
 });
+

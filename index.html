@@ -29,6 +29,20 @@
       </div>
 
       <div class="header-right">
+        <!-- Currency Selector -->
+        <div class="currency-selector" id="currency-selector">
+          <button class="currency-btn" id="currency-btn" title="Change Currency">
+            <span id="currency-symbol-display">₹</span>
+            <span class="currency-arrow">▾</span>
+          </button>
+          <div class="currency-dropdown" id="currency-dropdown">
+            <button class="currency-option active" data-currency="INR" data-symbol="₹">🇮🇳 ₹ INR</button>
+            <button class="currency-option" data-currency="USD" data-symbol="$">🇺🇸 $ USD</button>
+            <button class="currency-option" data-currency="EUR" data-symbol="€">🇪🇺 € EUR</button>
+            <button class="currency-option" data-currency="GBP" data-symbol="£">🇬🇧 £ GBP</button>
+          </div>
+        </div>
+
         <div class="streak-badge" id="streak-badge">
           🏆 <span id="streak-count">0</span>
         </div>
@@ -72,7 +86,7 @@
             <div class="form-group">
               <label for="amount">Amount</label>
               <div class="amount-wrapper">
-                <span class="amount-prefix">₹</span>
+                <span class="amount-prefix" id="amount-prefix">₹</span>
                 <input type="number" id="amount" placeholder="0.00" required min="1" step="any">
               </div>
             </div>
@@ -89,6 +103,12 @@
             <div class="form-group">
               <label for="note">Note <span style="text-transform:none;font-weight:400;color:var(--text-muted)">(optional)</span></label>
               <input type="text" id="note" placeholder="E.g. Lunch with Sam">
+            </div>
+
+            <!-- Tags -->
+            <div class="form-group">
+              <label for="tags-input">Tags <span style="text-transform:none;font-weight:400;color:var(--text-muted)">(comma-separated)</span></label>
+              <input type="text" id="tags-input" placeholder="E.g. personal, food, weekend">
             </div>
 
             <!-- Date -->
@@ -109,6 +129,25 @@
 
             <button type="submit" class="btn-primary expense-mode" id="submit-btn">Add Transaction</button>
           </form>
+        </div>
+
+        <!-- Tag Cloud Card -->
+        <div class="card tag-cloud-card" id="tag-cloud-card" style="display:none;">
+          <p class="card-title">🏷️ Tags</p>
+          <div id="tag-cloud" class="tag-cloud">
+            <!-- Tags injected by JS -->
+          </div>
+        </div>
+
+        <!-- Achievements Card -->
+        <div class="card achievements-card" id="achievements-card">
+          <div class="achievements-header">
+            <p class="card-title" style="margin-bottom:0;">🏅 Achievements</p>
+            <span class="achievements-count" id="achievements-count">0 / 0</span>
+          </div>
+          <div id="achievements-list" class="achievements-list">
+            <!-- Badges injected by JS -->
+          </div>
         </div>
       </aside>
 
@@ -146,12 +185,44 @@
           </div>
         </div>
 
+        <!-- Financial Dashboard Summary Row -->
+        <div class="dashboard-row" id="dashboard-row">
+          <div class="dash-card">
+            <div class="dash-icon" style="background:rgba(110,168,254,0.12); color:var(--blue);">📊</div>
+            <div class="dash-info">
+              <span class="dash-label">Avg Daily</span>
+              <span class="dash-value" id="dash-avg-daily">₹0</span>
+            </div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-icon" style="background:rgba(249,112,102,0.12); color:var(--red);">🔥</div>
+            <div class="dash-info">
+              <span class="dash-label">Biggest Txn</span>
+              <span class="dash-value" id="dash-biggest">₹0</span>
+            </div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-icon" style="background:rgba(34,211,165,0.12); color:var(--green);">📅</div>
+            <div class="dash-info">
+              <span class="dash-label">Most Active</span>
+              <span class="dash-value" id="dash-active-day">—</span>
+            </div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-icon" style="background:rgba(167,139,250,0.12); color:var(--purple);">💎</div>
+            <div class="dash-info">
+              <span class="dash-label">Savings Rate</span>
+              <span class="dash-value" id="dash-savings-rate">0%</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Monthly Budget -->
         <div class="card budget-card">
           <div class="budget-header">
             <p class="card-title" style="margin-bottom:0;">Monthly Budget</p>
             <div class="budget-input-wrapper">
-              <span>₹</span>
+              <span id="budget-currency-symbol">₹</span>
               <input type="number" id="monthly-budget" placeholder="Set limit" min="0">
             </div>
           </div>
@@ -178,7 +249,7 @@
             <div class="savings-form-row">
               <input type="text" id="savings-goal-name" placeholder="Goal name (e.g. Vacation)">
               <div class="amount-wrapper" style="flex:1;">
-                <span class="amount-prefix">₹</span>
+                <span class="amount-prefix" id="savings-currency-symbol">₹</span>
                 <input type="number" id="savings-goal-target" placeholder="Target amount" min="0">
               </div>
             </div>
@@ -198,6 +269,22 @@
             <div class="insights-dots" id="insights-dots"></div>
           </div>
           <p id="insight-text" style="margin-top:.75rem;">Analyzing your spending…</p>
+        </div>
+
+        <!-- Year-in-Review Card -->
+        <div class="card year-review-card" id="year-review-card">
+          <div class="year-review-header" id="year-review-toggle">
+            <p class="card-title" style="margin-bottom:0;">📅 Year at a Glance</p>
+            <button class="gear-btn" id="year-review-collapse-btn">▾ Expand</button>
+          </div>
+          <div class="year-review-body" id="year-review-body" style="display:none;">
+            <div class="year-review-stats" id="year-review-stats">
+              <!-- Injected by JS -->
+            </div>
+            <div class="year-review-chart-wrapper">
+              <canvas id="year-review-chart"></canvas>
+            </div>
+          </div>
         </div>
 
         <!-- Charts Row -->
@@ -246,6 +333,11 @@
               <span class="search-icon">🔍</span>
               <input type="text" id="search-input" class="search-input" placeholder="Search transactions…">
             </div>
+            <!-- CSV Import -->
+            <label for="import-csv-input" class="import-btn" id="import-btn-label" title="Import CSV">
+              📥 Import
+              <input type="file" id="import-csv-input" accept=".csv" style="display:none;">
+            </label>
             <button id="export-btn" class="export-btn">📄 Export CSV</button>
           </div>
         </div>
